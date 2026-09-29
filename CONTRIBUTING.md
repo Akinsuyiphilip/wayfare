@@ -22,7 +22,9 @@ cd wayfare
 make test
 ```
 
-Go 1.22 or later. Dependencies are `shopspring/decimal` and `BurntSushi/toml`.
+Go 1.22 or later. Dependencies are `shopspring/decimal` and `BurntSushi/toml` —
+exactly two, pinned, and enforced in CI. The reasoning, and the process for
+changing it: **[docs/dependency-policy.md](docs/dependency-policy.md)**.
 
 For a fuller on-ramp — from the clone above to verifying the recorded data and
 reproducing a published figure — follow **[docs/first-15-minutes.md](docs/first-15-minutes.md)**.

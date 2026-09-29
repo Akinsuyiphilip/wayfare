@@ -454,7 +454,9 @@ Every `cmd/ladder` run also runs the same counterparty checks the server runs
 then carries no findings block — the difference is a flag the operator chose,
 not an accident of which binary produced the document.
 
-Go 1.22+. Dependencies: `shopspring/decimal` and `BurntSushi/toml`. Both
+Go 1.22+. Dependencies: `shopspring/decimal` and `BurntSushi/toml` — exactly
+two, version-pinned, and enforced in CI so the surface cannot drift quietly
+([docs/dependency-policy.md](docs/dependency-policy.md)). Both
 binaries need live network access — there are no cached figures to fall back
 on, by design.
 
