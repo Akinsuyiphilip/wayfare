@@ -314,6 +314,22 @@
   .v-unusable { color: var(--bad); font-weight: 600; }
   .v-poor { color: var(--warn); }
   .v-good, .v-fair { color: var(--ok); }
+  /* A verdict's mark is its channel when the colour is gone — greyscale,
+     forced-colors, or a reader who does not separate these four hues. It
+     travels inside the coloured cell, so one class still paints both, and
+     it is always set beside the word: the mark never carries a verdict on
+     its own. */
+  .v-mark {
+    display: inline-flex; align-items: center; gap: .28rem;
+    width: 1.1rem; height: 1.1rem; margin-right: .4rem;
+    font: 700 .74rem/1 var(--mono);
+    border: 1px solid currentColor; border-radius: 3px;
+  }
+  /* The mark and the grade it names stay on one line. At 320px the verdict
+     column is 86px wide and a mark plus a grade does not fit across it:
+     wrapped, the mark ends up alone on the line above, a line away from the
+     word it stands for. The table already scrolls sideways there. */
+  .v-cell { white-space: nowrap; }
   .scroll { overflow-x: auto; }
   .finding-row { display: flex; gap: var(--space-3); align-items: baseline; padding: var(--space-2) 0;
                  border-bottom: 1px solid var(--grid); }
@@ -628,6 +644,25 @@ function integrityCell(state, dependsOn = []) {
 }
 
 const verdictClass = (v) => 'v-' + String(v).toLowerCase();
+
+// The mark beside a verdict. Colour was the only thing separating GOOD from
+// POOR once the word was out of view, and a hue is exactly what a greyscale
+// print, a forced-colors mode and some readers remove. The mark is that
+// second channel: a shape per grade, always printed next to the word, so
+// neither one has to carry the verdict alone.
+//
+// The four keys are the four grades the engine publishes. Nothing else gets a
+// mark: an unrecognised verdict is rendered as the bare word the API sent,
+// with no colour and no mark, because dressing a grade this client has never
+// heard of would be inventing one.
+const VERDICT_MARKS = { GOOD: '✓', FAIR: '≈', POOR: '!', UNUSABLE: '✕' };
+
+const verdictMark = (v) => {
+  const m = VERDICT_MARKS[String(v).toUpperCase()];
+  // aria-hidden: the word beside it is what assistive tech should read, and
+  // announcing both would say the grade twice.
+  return m ? `<span class="v-mark" aria-hidden="true">${m}</span>` : '';
+};
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1050,7 +1085,7 @@ function recommendationBlock(d) {
   const q = d.recommended;
   return `<div class="rec-some">Recommended at ${esc(d.recommended_size)}
     ${esc(d.send_asset.code)}: ${esc(q.description)} &mdash; ${formatPct(q.loss_pct)}%
-    below mid, graded ${esc(q.verdict)}.</div>`;
+    below mid, graded ${verdictMark(q.verdict)}${esc(q.verdict)}.</div>`;
 }
 
 // A log-x line chart. Loss is clamped to 0–100 so the shape of the curve, not
@@ -1113,12 +1148,16 @@ function table(rungs, scored, depends) {
     }
     const q = r.quote;
     if (scored) {
+      // The loss figure keeps its colour as a scanning aid, but the grade
+      // beside it is what the row asserts — the number is the engine's, the
+      // word and the mark are the verdict, and only the last two survive
+      // the loss of colour.
       return `<tr>
         <td class="num">${esc(r.send_amount)}</td>
         <td class="num">${esc(q.receive_amount)}</td>
         <td class="num">${esc(q.effective_rate)}</td>
         <td class="num ${verdictClass(q.verdict)}">${formatPct(q.loss_pct)}%</td>
-        <td class="${verdictClass(q.verdict)}">${esc(q.verdict)}</td>
+        <td class="${verdictClass(q.verdict)}"><span class="v-cell">${verdictMark(q.verdict)}${esc(q.verdict)}</span></td>
         <td>${esc(q.description)}</td>
       </tr>`;
     }
@@ -1251,10 +1290,10 @@ function legend() {
     <h2>Verdict thresholds</h2>
     <p>Loss is how far the achieved rate falls below the reference mid.</p>
     <p>
-      <span class="v-good" style="font-weight:600">GOOD</span> ≤ 3% &middot;
-      <span class="v-fair">FAIR</span> ≤ 8% &middot;
-      <span class="v-poor">POOR</span> ≤ 20% &middot;
-      <span class="v-unusable">UNUSABLE</span> &gt; 20%
+      <span class="v-good" style="font-weight:600">${verdictMark('GOOD')}GOOD</span> ≤ 3% &middot;
+      <span class="v-fair">${verdictMark('FAIR')}FAIR</span> ≤ 8% &middot;
+      <span class="v-poor">${verdictMark('POOR')}POOR</span> ≤ 20% &middot;
+      <span class="v-unusable">${verdictMark('UNUSABLE')}UNUSABLE</span> &gt; 20%
     </p>
     <dl class="legend-grid" aria-label="Finding state legend">
       <div class="legend-item"><dt><span class="f-state f-pass">PASS</span></dt><dd>Observed and clear</dd></div>
@@ -1390,7 +1429,7 @@ function renderTrend() {
 
   parts.push(`<section class="panel" aria-label="Stored runs">
     <h2>Stored runs</h2>
-    <div class="scroll">${runsTable(runs)}</div>
+    <div class="scroll" tabindex="0" role="region" aria-label="Stored runs, newest first">${runsTable(runs)}</div>
     <p class="meta">Newest first. The reference column names the provider each
     run was scored against, so a benchmark change sits next to the numbers it
     affects.</p></section>`);
@@ -1496,6 +1535,34 @@ function trendChart(d, size) {
       : i === 'NO-MARKET' ? 'var(--chart-nomarket)'
       : 'var(--muted)';
 
+  // One dot per stored run, and its fill alone said which integrity state
+  // that run recorded — a channel that disappears the moment colour does,
+  // with no second cue anywhere in the plot. The shape says it too: a filled
+  // circle for DIRECT, a diamond for DERIVATIVE, a square for NO-MARKET.
+  // Colour stays, as a scanning aid, and the key below draws the shapes.
+  //
+  // An unrecognised state draws the DIRECT circle: it is the neutral shape,
+  // and a state the engine has not defined here must not be dressed as one
+  // of the three that exist.
+  const dotMark = (integrity, cx, cy, r, attrs, title) => {
+    const fill = dotFill(integrity);
+    const tip = title ? `<title>${title}</title>` : '';
+    if (integrity === 'DERIVATIVE')
+      return `<rect x="${(cx - r).toFixed(1)}" y="${(cy - r).toFixed(1)}" width="${(r * 2).toFixed(1)}" height="${(r * 2).toFixed(1)}"
+        transform="rotate(45 ${cx.toFixed(1)} ${cy.toFixed(1)})" fill="${fill}" ${attrs}>${tip}</rect>`;
+    if (integrity === 'NO-MARKET')
+      return `<rect x="${(cx - r).toFixed(1)}" y="${(cy - r).toFixed(1)}" width="${(r * 2).toFixed(1)}" height="${(r * 2).toFixed(1)}"
+        fill="${fill}" ${attrs}>${tip}</rect>`;
+    return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}"
+       fill="${fill}" ${attrs}>${tip}</circle>`;
+  };
+
+  // The same mark at key size, wrapped in its own 12x12 box so the key can
+  // sit in a line of text. Hidden from assistive tech: the word beside it
+  // already names the state.
+  const keySwatch = (integrity) =>
+    `<svg class="sw" viewBox="0 0 12 12" aria-hidden="true">${dotMark(integrity, 6, 6, 4, 'class="key-mark"', '')}</svg>`;
+
   const segments = [];
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
@@ -1516,9 +1583,8 @@ function trendChart(d, size) {
       `reference mid ${esc(ref.mid || 'n/a')} via ${esc(ref.scored_against || ref.source || 'unknown')}`,
       `integrity ${esc(r.integrity)}${(r.depends_on || []).length ? ' via ' + esc(r.depends_on.join(', ')) : ''}`,
     ].join('<br/>');
-    return `<circle cx="${sx(p.t).toFixed(1)}" cy="${sy(p.loss).toFixed(1)}" r="3.5"
-       fill="${dotFill(r.integrity)}" stroke="var(--panel)" stroke-width="1.25">
-       <title>${title}</title></circle>`;
+    return dotMark(r.integrity, sx(p.t), sy(p.loss), 3.5,
+      `class="run-mark" stroke="var(--panel)" stroke-width="1.25"`, title);
   }).join('');
 
   const empty = priced.length
